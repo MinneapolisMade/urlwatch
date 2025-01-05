@@ -15,10 +15,15 @@ here = os.path.dirname(__file__)
 
 
 # https://stackoverflow.com/a/48719723/1047040
+# https://stackoverflow.com/a/75996218/1047040
 def parse_rst(text):
     parser = docutils.parsers.rst.Parser()
-    components = (docutils.parsers.rst.Parser,)
-    settings = docutils.frontend.OptionParser(components=components).get_default_values()
+    if hasattr(docutils.frontend, 'get_default_settings'):
+        # docutils >= 0.18
+        settings = docutils.frontend.get_default_settings(docutils.parsers.rst.Parser)
+    else:
+        # docutils < 0.18
+        settings = docutils.frontend.OptionParser(components=(docutils.parsers.rst.Parser,)).get_default_values()
     document = docutils.utils.new_document('<rst-doc>', settings=settings)
     parser.parse(text, document)
     return document
@@ -39,7 +44,8 @@ class YAMLCodeBlockVisitor(docutils.nodes.NodeVisitor):
 
 
 def load_filter_testdata():
-    doc = parse_rst(open(os.path.join(root, 'docs/source/filters.rst')).read())
+    with open(os.path.join(root, 'docs/source/filters.rst')) as f:
+        doc = parse_rst(f.read())
     visitor = YAMLCodeBlockVisitor(doc)
     doc.walk(visitor)
 
@@ -51,15 +57,17 @@ def load_filter_testdata():
     return jobs
 
 
-FILTER_DOC_URLS = load_filter_testdata()
+FILTER_DOC_URLS = list(load_filter_testdata().items())
 
 
-@pytest.mark.parametrize('url, job', FILTER_DOC_URLS.items())
+@pytest.mark.parametrize('url, job', FILTER_DOC_URLS, ids=[v[0] for v in FILTER_DOC_URLS])
 def test_url(url, job):
-    testdata = yaml.safe_load(open(os.path.join(here, 'data/filter_documentation_testdata.yaml')).read())
+    with open(os.path.join(here, 'data/filter_documentation_testdata.yaml')) as f:
+        testdata = yaml.safe_load(f)
     d = testdata[url]
     if 'filename' in d:
-        input_data = open(os.path.join(here, 'data', d['filename']), 'rb').read()
+        with open(os.path.join(here, 'data', d['filename']), 'rb') as f:
+            input_data = f.read()
     else:
         input_data = d['input']
 

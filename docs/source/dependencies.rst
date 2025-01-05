@@ -10,12 +10,12 @@ additional packages -- however, those are not needed to run urlwatch.
 Mandatory Packages
 ------------------
 
--  Python 3.6 or newer
+-  Python 3.9 or newer
 -  `PyYAML <http://pyyaml.org/>`__
 -  `minidb <https://thp.io/2010/minidb/>`__
 -  `requests <http://python-requests.org/>`__
 -  `keyring <https://github.com/jaraco/keyring/>`__
--  `appdirs <https://github.com/ActiveState/appdirs>`__
+-  `platformdirs <https://github.com/platformdirs/platformdirs>`__
 -  `lxml <https://lxml.de>`__
 -  `cssselect <https://cssselect.readthedocs.io>`__
 
@@ -23,7 +23,7 @@ The dependencies can be installed with (add ``--user`` to install to ``$HOME``):
 
 ::
 
-    python3 -m pip install pyyaml minidb requests keyring appdirs lxml cssselect
+    python3 -m pip install pyyaml minidb requests keyring platformdirs lxml cssselect
 
 
 Optional Packages
@@ -48,7 +48,8 @@ Where ``<packagename>`` is one of the following:
 | `stdout` reporter with  | `colorama <https://github.com/tartley/colorama>`__                  |
 | color on Windows        |                                                                     |
 +-------------------------+---------------------------------------------------------------------+
-| `browser` job kind      | `pyppeteer <https://github.com/pyppeteer/pyppeteer>`__              |
+| `browser` job kind      | `playwright <https://github.com/microsoft/playwright-python>`__     |
+|                         | (since version 2.28)                                                |
 +-------------------------+---------------------------------------------------------------------+
 | Unit testing            | `pycodestyle <http://pycodestyle.pycqa.org/en/latest/>`__,          |
 |                         | `docutils <https://docutils.sourceforge.io>`__,                     |
@@ -59,6 +60,9 @@ Where ``<packagename>`` is one of the following:
 |                         | optional dependencies (for ``<script>`` and ``<style>`` tags):      |
 |                         | `jsbeautifier <https://pypi.org/project/jsbeautifier/>`__ and       |
 |                         | `cssbeautifier <https://pypi.org/project/cssbeautifier/>`__         |
++-------------------------+---------------------------------------------------------------------+
+| `html2text` filter      | `beautifulsoup4 <https://pypi.org/project/beautifulsoup4/>`__       |
+| with `method: bs4`      |                                                                     |
 +-------------------------+---------------------------------------------------------------------+
 | `pdf2text` filter       | `pdftotext <https://github.com/jalan/pdftotext>`__ and              |
 |                         | its OS-specific dependencies (see the above link)                   |

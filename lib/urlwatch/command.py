@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of urlwatch (https://thp.io/2008/urlwatch/).
-# Copyright (c) 2008-2021 Thomas Perl <m@thp.io>
+# Copyright (c) 2008-2024 Thomas Perl <m@thp.io>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,6 +34,7 @@ import shutil
 import sys
 import requests
 import traceback
+import datetime
 
 from .filters import FilterBase
 from .handler import JobState, Report
@@ -94,16 +95,16 @@ class UrlwatchCommand:
         return 0
 
     def list_urls(self):
-        for idx, job in enumerate(self.urlwatcher.jobs):
+        for idx, job in enumerate(self.urlwatcher.jobs, 1):
             if self.urlwatch_config.verbose:
-                print('%d: %s' % (idx + 1, repr(job)))
+                print('%d: %s' % (idx, repr(job)))
             else:
                 pretty_name = job.pretty_name()
                 location = job.get_location()
                 if pretty_name != location:
-                    print('%d: %s ( %s )' % (idx + 1, pretty_name, location))
+                    print('%d: %s ( %s )' % (idx, pretty_name, location))
                 else:
-                    print('%d: %s' % (idx + 1, pretty_name))
+                    print('%d: %s' % (idx, pretty_name))
         return 0
 
     def _find_job(self, query):
@@ -141,11 +142,29 @@ class UrlwatchCommand:
         # (ignore_cached) and we do not want to store the newly-retrieved data yet (filter testing)
         return 0
 
-    def test_diff_filter(self, id):
+    def prepare_jobs(self):
+        new_jobs = []
+        for idx, job in enumerate(self.urlwatcher.jobs):
+            has_history = self.urlwatcher.cache_storage.has_history_data(job.get_guid())
+            if not has_history:
+                logger.info('Add Job: %s', job.pretty_name())
+                new_jobs.append(idx + 1)
+        if not new_jobs:
+            return 0
+        self.urlwatch_config.idx_set = frozenset(new_jobs)
+        self.urlwatcher.run_jobs()
+        self.urlwatcher.close()
+
+    def _resolve_job_history(self, id, max_entries=10):
         job = self._get_job(id)
 
-        history_data = self.urlwatcher.cache_storage.get_history_data(job.get_guid(), 10)
+        history_data = self.urlwatcher.cache_storage.get_history_data(job.get_guid(), max_entries)
         history_data = sorted(history_data.items(), key=lambda kv: kv[1])
+
+        return job, history_data
+
+    def test_diff_filter(self, id):
+        job, history_data = self._resolve_job_history(id)
 
         if len(history_data) and getattr(job, 'treat_new_as_changed', False):
             # Insert empty history entry, so first snapshot is diffed against the empty string
@@ -167,6 +186,21 @@ class UrlwatchCommand:
         # (ignore_cached) and we do not want to store the newly-retrieved data yet (filter testing)
         return 0
 
+    def dump_history(self, id):
+        job, history_data = self._resolve_job_history(id)
+
+        for entry_data, entry_timestamp in history_data:
+            print('=' * 30)
+            dt = datetime.datetime.fromtimestamp(entry_timestamp)
+            print(dt.strftime('%Y-%m-%d %H:%M'))
+            print('-' * 30)
+            print(entry_data)
+            print('=' * 30, '\n')
+
+        print('{} historic snapshot(s) available'.format(len(history_data)))
+
+        return 0
+
     def modify_urls(self):
         save = True
         if self.urlwatch_config.delete is not None:
@@ -176,6 +210,24 @@ class UrlwatchCommand:
                 print('Removed %r' % (job,))
             else:
                 print('Not found: %r' % (self.urlwatch_config.delete,))
+                save = False
+
+        if self.urlwatch_config.enable is not None:
+            job = self._find_job(self.urlwatch_config.enable)
+            if job is not None:
+                job.enabled = True
+                print(f'Enabled {job!r}')
+            else:
+                print(f'Not found: {self.urlwatch_config.enable!r}')
+                save = False
+
+        if self.urlwatch_config.disable is not None:
+            job = self._find_job(self.urlwatch_config.disable)
+            if job is not None:
+                job.enabled = False
+                print(f'Disabled {job!r}')
+            else:
+                print(f'Not found: {self.urlwatch_config.disable!r}')
                 save = False
 
         if self.urlwatch_config.add is not None:
@@ -191,6 +243,31 @@ class UrlwatchCommand:
             print('Adding %r' % (job,))
             self.urlwatcher.jobs.append(job)
 
+        if self.urlwatch_config.change_location is not None:
+            new_loc = self.urlwatch_config.change_location[1]
+            # Ensure the user isn't overwriting an existing job with the change.
+            if new_loc in (j.get_location() for j in self.urlwatcher.jobs):
+                print(f'The new location "{new_loc}" already exists for a job. '
+                      'Delete the existing job or choose a different value.')
+                save = False
+            else:
+                job = self._find_job(self.urlwatch_config.change_location[0])
+                if job is not None:
+                    # Update the job's location (which will also update the
+                    # guid) and move any history in the cache over to the job's
+                    # updated guid.
+                    print(f'Moving location of {job!r} to "{new_loc}"')
+                    old_guid = job.get_guid()
+                    old_loc = job.get_location()
+                    job.set_base_location(new_loc)
+                    num_moved = self.urlwatcher.cache_storage.move(
+                        old_guid, job.get_guid())
+                    if num_moved:
+                        print(f'Moved {num_moved} snapshots of "{old_loc}" to "{new_loc}"')
+                else:
+                    print(f'Not found: {self.urlwatch_config.change_location[0]}')
+                    save = False
+
         if save:
             self.urlwatcher.urls_storage.save(self.urlwatcher.jobs)
 
@@ -199,8 +276,8 @@ class UrlwatchCommand:
     def handle_actions(self):
         if self.urlwatch_config.features:
             sys.exit(self.show_features())
-        if self.urlwatch_config.gc_cache:
-            self.urlwatcher.cache_storage.gc([job.get_guid() for job in self.urlwatcher.jobs])
+        if self.urlwatch_config.gc_cache is not None:
+            self.urlwatcher.cache_storage.gc([job.get_guid() for job in self.urlwatcher.jobs], self.urlwatch_config.gc_cache)
             sys.exit(0)
         if self.urlwatch_config.edit:
             sys.exit(self.urlwatcher.urls_storage.edit(self.urlwatch_config.urls_yaml_example))
@@ -210,9 +287,17 @@ class UrlwatchCommand:
             sys.exit(self.test_filter(self.urlwatch_config.test_filter))
         if self.urlwatch_config.test_diff_filter:
             sys.exit(self.test_diff_filter(self.urlwatch_config.test_diff_filter))
+        if self.urlwatch_config.prepare_jobs:
+            sys.exit(self.prepare_jobs())
+        if self.urlwatch_config.dump_history:
+            sys.exit(self.dump_history(self.urlwatch_config.dump_history))
         if self.urlwatch_config.list:
             sys.exit(self.list_urls())
-        if self.urlwatch_config.add is not None or self.urlwatch_config.delete is not None:
+        if (self.urlwatch_config.add is not None
+                or self.urlwatch_config.delete is not None
+                or self.urlwatch_config.enable is not None
+                or self.urlwatch_config.disable is not None
+                or self.urlwatch_config.change_location is not None):
             sys.exit(self.modify_urls())
 
     def check_edit_config(self):

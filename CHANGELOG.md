@@ -4,7 +4,132 @@ All notable changes to this project will be documented in this file.
 
 The format mostly follows [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
-## [UNRELEASED]
+## UNRELEASED
+
+### Added
+
+- New command-line option `--prepare-jobs` to initialize new jobs or jobs without history (#831 by nille02)
+
+### Changed
+
+- Remove EOL'd Python 3.8 (new minimum requirement is Python 3.9), add Python 3.13 testing
+
+## [2.29] -- 2024-10-28
+
+### Added
+
+- New `enabled` option for all jobs. Set to false to disable a job without needing to remove it or comment it out (Requested in #625 by snowman, contributed in #785 by jamstah)
+- Command line options to enable and disbale jobs (Requested in #813 by gapato, contributed in #820 by jamstah)
+- New option `ignore_incomplete_reads` (Requested in #725 by wschoot, contributed in #787 by wfrisch)
+- New option `wait_for` in browser jobs (Requested in #763 by yuis-ice, contributed in #810 by jamstah)
+- Added tags to jobs and the ability to select them at the command line (#789 by jamstah)
+- New filter `re.findall` (Requested in #804 by f0sh, contributed in #805 by jamstah)
+- Added tags to jobs and the ability to select them at the command line (#789, #824 by jamstah)
+- New reporter: `gotify` (#823 by franco-righetti)
+
+### Changed
+
+- Remove EOL'd Python 3.7 (new minimum requirement is Python 3.8), add Python 3.12 testing
+- Adds optional `reply_to` option for email reporters (#794 by trevorshannon)
+- Replace the dead dependency `appdirs` with `platformdirs` (#811 by Maxime Werlen, #819 via e-dschungel)
+- New concurrency test (#806 by Jamstah)
+- `jobs.yaml` sanity checks now allows the file to be owned by `root` (#828)
+
+### Fixed
+
+- `email` reporter: Allow multiple recipients for `sendmail` method (#797, by monperrus)
+- Fix documentation for watching Github tags and releases, again (#723)
+- Fix `--test-reporter` command-line option so `separate` configuration option is no longer ignored when sending test notifications (#772, by marunjar)
+- Fix line height and dark mode regression (#774 reported by kongomongo, PRs #777 and #778 by trevorshannon)
+- Fix compatibility with lxml >= 5 which caused the CSS Selector filter to fail (#783 reported by jamesquilty, PR #786 by jamstah)
+- Fix pep8 test to ignore files in the site-packages directory for cases where the venv is in the project directory (#788 by jamstah)
+- Fix HTML diff table rendering for long line lengths (#793 by trevorshannon)
+- Fix IndexError after failed edit (#801 by jwilk)
+- Fix concurrency issue in Python 3.12 by upgrading to minidb 2.0.8 (fixes #779)
+
+## [2.28] -- 2023-05-03
+
+### Changed
+
+- Browser jobs: Migrate from Pyppeteer to Playwright (#761, by Paul Sattlegger, fixes #751)
+
+## [2.27] -- 2023-05-03
+
+### Added
+
+- `css` and `xpath` filters now accept a `sort` subfilter to sort matched elements lexicographically
+
+### Fixed
+
+- Rework handling of running from a source checkout, fixes issues with example files
+  when `urlwatch` was run as `/usr/sbin/urlwatch`, e.g. on Void Linux (fixes #755)
+- Add support for docutils >= 0.18, which deprecated `frontend.OptionParser` (fixes #754)
+- Browser jobs: Fix support for Python 3.11 with `@asyncio.coroutine` removal (#759, by Faster IT)
+
+## [2.26] -- 2023-04-11
+
+### Added
+
+- `browser` job: Add support for specifying `useragent` (#700, by Francesco Versaci)
+- Document how to ignore whitespace changes (PR#707, by Paulo Magalhaes)
+- `shell` reporter: Call a script or program when changes are detected (fixes #650)
+- New `separate` configuration option for reporters to split reports into one-per-job (contributed by Ryne Everett)
+- `--change-location` option allowing job location to be changed without losing job history (#739, by trevorshannon)
+
+### Changed
+
+- Docs: Re-group diff-related topics and improve wording (PR#712, by neutric)
+- Improved HTML e-mail diff style, including Dark Mode support (#730, by trevorshannon)
+- Require Python >= 3.7, as Python 3.6 was EOL'd on 2021-12-23
+- `Dockerfile`: Shrink image by switching to an Alpine-based Python 3.11 base image,
+  this reduces the container size from 1 GiB to 151 MiB (#731, by Scott Edlund)
+- `--gc-cache` can now take a parameter to keep more than 1 historical snapshot
+  (#732, by trevorshannon)
+
+### Fixed
+
+- Limit e-mail header length to 78 characters to avoid issues with some SMTP servers
+  (PR#703, fixes #702, by Julien Palard)
+- Fix a ResourceWarning for unclosed files when running unit tests
+  (PR#698, by Louis Sautier)
+- Add support for html2text 2.1.1 and newer by feature-checking `-utf8` support via `-help` (fixes #718)
+- html2text options were only applied to the first job when using `job_defaults`
+  (PR#726, fixes #588, by trevorshannon)
+- Update Github tags watch filter documentation with new XPath (fixes #723, by Luis Aranguren)
+- Fix `--gc-cache` to clear unknown keys when using Redis storage (fixes #743, by scottmac) 
+
+## [2.25] -- 2022-03-15
+
+### Added
+
+- Add a `colored` setting for the Discord reporter, enabled by default (PR#683 by Michał Ciołek)
+- Add a `splitlines` filter for trimming leading/trailing whitespace in each line (PR#693 by Lukas Anzinger)
+- If a shell job fails, the job's `stdout` and `stderr` are added to the error message (fixes #689)
+- `shell` job: Add optional `stderr` key to customize how output on `stderr` is treated
+- Add `--dump-history JOB` command-line option to print historic job outputs (fixes #681)
+- Add `display` / `empty-diff` configuration option to skip reports when diffs are empty
+  due to `diff_filter` (fixes #692)
+- New man pages: `urlwatch-intro(7)`, `urlwatch-deprecated(7)`, `urlwatch-cookbook(7)`,
+  `urlwatch-jobs(5)`, `urlwatch-filters(5)`, `urlwatch-config(5)` and `urlwatch-reporters(5)`.
+
+### Changed
+
+- Require minidb 2.0.6; issue `VACUUM` only with `--gc-cache` (fixes #690)
+- For shell jobs, `stderr` output isn't sent to urlwatch's stdout anymore; add `stdout: urlwatch`
+  to your shell job definition if you depend on the old default behavior
+
+### Fixed
+
+- `pytest` command-line arguments are not wrongly interpreted by `CommandConfig` anymore (fixes #677)
+
+### Packaging
+
+- Man pages in `share/man/` are generated from `docs/source/` using Sphinx. In order to not require
+  Sphinx for normal installation, `update-manpages.sh` is used to generate and fix up man pages
+  stored in `shared/`. These man pages are stored in Git and in the release tarballs, so installations
+  from source do not need to have Sphinx available for the manpages to be available.
+- Packagers can customize the `manpages_url` setting in `docs/source/conf.py` to point to the distribution's
+  web man pages for the generated HTML documentation (if Sphinx is used to generate HTML docs).
 
 ## [2.24] -- 2021-11-07
 

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of urlwatch (https://thp.io/2008/urlwatch/).
-# Copyright (c) 2008-2021 Thomas Perl <m@thp.io>
+# Copyright (c) 2008-2024 Thomas Perl <m@thp.io>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,20 +35,17 @@ import os.path
 import signal
 import sys
 
-from appdirs import AppDirs
+from platformdirs import PlatformDirs
 
 pkgname = 'urlwatch'
 urlwatch_dir = os.path.expanduser(os.path.join('~', '.' + pkgname))
-urlwatch_cache_dir = AppDirs(pkgname).user_cache_dir
+urlwatch_cache_dir = PlatformDirs(pkgname).user_cache_dir
 
 if not os.path.exists(urlwatch_dir):
-    urlwatch_dir = AppDirs(pkgname).user_config_dir
+    urlwatch_dir = PlatformDirs(pkgname).user_config_dir
 
 # Check if we are installed in the system already
 (prefix, bindir) = os.path.split(os.path.dirname(os.path.abspath(sys.argv[0])))
-
-if bindir != 'bin':
-    sys.path.insert(0, os.path.join(prefix, bindir, 'lib'))
 
 from urlwatch.command import UrlwatchCommand
 from urlwatch.config import CommandConfig
@@ -90,7 +87,7 @@ def main():
     if os.path.exists(old_cache_file) and not os.path.exists(new_cache_file):
         cache_file = old_cache_file
 
-    command_config = CommandConfig(pkgname, urlwatch_dir, bindir, prefix,
+    command_config = CommandConfig(sys.argv[1:], pkgname, urlwatch_dir, prefix,
                                    config_file, urls_file, hooks_file, cache_file, False)
     setup_logger(command_config.verbose)
 

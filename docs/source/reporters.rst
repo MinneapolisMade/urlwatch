@@ -3,16 +3,33 @@
 Reporters
 =========
 
-By default `urlwatch` prints out information about changes to standard
+.. only:: man
+
+   Synopsis
+   --------
+
+   urlwatch --edit-config
+
+   Description
+   -----------
+
+
+By default :manpage:`urlwatch(1)` prints out information about changes to standard
 output, which is your terminal if you run it interactively. If running
-via `cron` or another scheduler service, it depends on how the scheduler
+via :manpage:`cron(8)` or another scheduler service, it depends on how the scheduler
 is configured.
 
 You can enable one or more additional reporters that are used to send
 change notifications. Please note that most reporters need additional
 dependencies installed.
 
-See :ref:`configuration` on how to edit the configuration.
+.. only:: html or pdf
+
+    See :ref:`configuration` on how to edit the configuration.
+
+.. only:: man
+
+    See :manpage:`urlwatch-config(5)` for generic config settings.
 
 To send a test notification, use the ``--test-reporter`` command-line option
 with the name of the reporter::
@@ -43,19 +60,21 @@ The list of built-in reporters can be retrieved using::
 
 At the moment, the following reporters are built-in:
 
-- **stdout**: Print summary on stdout (the console)
-- **email**: Send summary via e-mail / SMTP
+- **discord**: Send a message to a Discord channel
+- **email**: Send summary via e-mail / SMTP / sendmail
+- **gotify**: Send a message to a gotify server
+- **ifttt**: Send summary via IFTTT
 - **mailgun**: Send e-mail via the Mailgun service
 - **matrix**: Send a message to a room using the Matrix protocol
 - **mattermost**: Send a message to a Mattermost channel
+- **prowl**: Send a detailed notification via prowlapp.com
 - **pushbullet**: Send summary via pushbullet.com
 - **pushover**: Send summary via pushover.net
+- **shell**: Pipe a message to a shell command
 - **slack**: Send a message to a Slack channel
-- **discord**: Send a message to a Discord channel
+- **stdout**: Print summary on stdout (the console)
 - **telegram**: Send a message using Telegram
-- **ifttt**: Send summary via IFTTT
 - **xmpp**: Send a message using the XMPP Protocol
-- **prowl**: Send a message via prowlapp.com
 
 .. To convert the "urlwatch --features" output, use:
    sed -e 's/^  \* \(.*\) - \(.*\)$/- **\1**: \2/'
@@ -172,7 +191,7 @@ See `Incoming Webooks <https://developers.mattermost.com/integrate/incoming-webh
 in the Mattermost documentation for details.
 
 Discord
------
+-------
 
 Discord notifications are configured using “Discord Incoming Webhooks”. Here
 is a sample configuration:
@@ -183,12 +202,40 @@ is a sample configuration:
       webhook_url: 'https://discordapp.com/api/webhooks/11111XXXXXXXXXXX/BBBBYYYYYYYYYYYYYYYYYYYYYYYyyyYYYYYYYYYYYYYY'
       enabled: true
       embed: true
+      colored: true
       subject: '{count} changes: {jobs}'
 
 To set up Discord, from your Discord Server settings, select Integration and then create a "New Webhook", give the webhook a name to post under, select a channel, push "Copy Webhook URL" and paste it into the configuration as seen above.
 
-Embedded content might be easier to read and identify individual reports. subject preceeds the embedded report and is only used when embed is true.
+Embedded content might be easier to read and identify individual reports. Subject precedes the embedded report and is only used when `embed` is true.
 
+When `colored` is true reports will be embedded in code section (with diff syntax) to enable colors.
+
+Gotify
+------
+
+[Gotify](https://gotify.net/) is a server for sending and receiving messages in real-time through WebSockets.
+
+To push notifications to a gotify server you need an application token.
+
+You can create one for urlwatch like so:
+
+1. Log into your gotify server's Web-UI.
+2. Navigate to the “APPS” tab.
+3. Click on the “CREATE APPLICATION” button.
+4. Fill out the fields and press “CREATE”.
+6. Click on the eye icon of the newly created entry and copy the token.
+
+Here is a sample configuration:
+
+.. code:: yaml
+
+   gotify:
+     enabled: true
+     priority: 4
+     server_url: "http://127.0.0.1:8090"
+     title: null
+     token: "Aa1yyikLFjEm35A"
 
 IFTTT
 -----
@@ -270,6 +317,21 @@ public Matrix room, as the messages quickly become noisy:
      minimal: true
      enabled: true
 
+E-Mail via sendmail
+---------------------
+
+You can send email via the system's ``sendmail`` command provided by the MTA. You need to set ``method: sendmail`` in the config file:
+
+.. code:: yaml
+
+    report:
+      email:
+        enabled: true
+        from: 'postmaster@example.com'
+        to: 'recipient@bar.com'
+        method: sendmail
+
+
 E-Mail via GMail SMTP
 ---------------------
 
@@ -286,45 +348,41 @@ via urlwatch. Allowing less secure apps and storing the password
 (even if it's in the keychain) is not good security practice for your
 primary account.
 
-Now, start the configuration editor: ``urlwatch --edit-config``
+Now, start the configuration editor::
+
+    urlwatch --edit-config
 
 These are the keys you need to configure:
 
--  ``report/email/enabled``: ``true``
--  ``report/email/from``: ``your.username@gmail.com`` (edit accordingly)
--  ``report/email/method``: ``smtp``
--  ``report/email/smtp/host``: ``smtp.gmail.com``
--  ``report/email/smtp/auth``: ``true``
--  ``report/email/smtp/port``: ``587``
--  ``report/email/smtp/starttls``: ``true``
--  ``report/email/to``: The e-mail address you want to send reports to
+.. code:: yaml
 
-Now, for setting the password, it’s not stored in the config file, but
-in your keychain. To store the password, run: ``urlwatch --smtp-login``
-and enter your password.
+    report:
+      email:
+        enabled: true
+        from: your.username@gmail.com
+        to: your.destination.email@example.com
+        method: smtp
+        smtp:
+          host: smtp.gmail.com
+          auth: true
+          port: 587
+          starttls: true
+
+The password is best stored in your keychain, and not in the config
+file. To store the password, run::
+
+    urlwatch --smtp-login
+
+This will query your password, check the login, and store it in your
+keychain. Subsequent runs will use this password for logging in.
+
 
 E-Mail via Amazon Simple E-Mail Service (SES)
 ---------------------------------------------
 
-Start the configuration editor: ``urlwatch --edit-config``
-
-These are the keys you need to configure:
-
--  ``report/email/enabled``: ``true``
--  ``report/email/from``: ``you@verified_domain.com`` (edit accordingly)
--  ``report/email/method``: ``smtp``
--  ``report/email/smtp/host``: ``email-smtp.us-west-2.amazonaws.com``
-   (edit accordingly)
--  ``report/email/smtp/user``: ``ABCDEFGHIJ1234567890`` (edit
-   accordingly)
--  ``report/email/smtp/auth``: ``true``
--  ``report/email/smtp/port``: ``587`` (25 or 465 also work)
--  ``report/email/smtp/starttls``: ``true``
--  ``report/email/to``: The e-mail address you want to send reports to
-
-The password is not stored in the config file, but in your keychain. To
-store the password, run: ``urlwatch --smtp-login`` and enter your
-password.
+Same as the GMail configuration above, but use e.g.
+``email-smtp.us-west-2.amazonaws.com`` as the SMTP host, and
+username and port settings according to SES's login page.
 
 
 .. _smtp-login-without-keyring:
@@ -336,14 +394,19 @@ If for whatever reason you cannot use a keyring to store your password
 (for example, when using it from a ``cron`` job) you can also set the
 ``insecure_password`` option in the SMTP config:
 
--  ``report/email/smtp/auth``: ``true``
--  ``report/email/smtp/insecure_password``: ``secret123``
+.. code:: yaml
+
+    report:
+      email:
+        smtp:
+          auth: true
+          insecure_password: secret123
 
 The ``insecure_password`` key will be preferred over the data stored in
 the keyring. Please note that as the name says, storing the password as
 plaintext in the configuration is insecure and bad practice, but for an
 e-mail account that’s only dedicated for sending mails this might be a
-way. **Never ever use this with your your primary e-mail account!**
+way. **Never ever use this with your primary e-mail account!**
 Seriously! Create a throw-away GMail (or other) account just for sending
 out those e-mails or use local ``sendmail`` with a mail server
 configured instead of relying on SMTP and password auth.
@@ -382,7 +445,7 @@ Prowl
 -----
 
 You can have notifications sent to you through the `Prowl` push
-notification service, to recieve the notification on iOS.
+notification service, to receive the notification on iOS.
 
 To achieve this, you should register a new Prowl account, and have
 the Prowl application installed on your iOS device.
@@ -411,3 +474,50 @@ The “subject" field is similar to the subject field in the email, and
 will be used as the name of the Prowl event. The application is prepended
 to the event and shown as the source of the event in the Prowl App.
 
+
+Shell
+-----
+
+This is a simple reporter that pipes the text report notification to a
+command of your choice. The command is run using Python's
+`subprocess.Popen()`_ with ``shell=False`` (to avoid possibly-unwanted
+shell expansion). Of course, you can create your own shell script that
+does shell expansion and other things, and call that from the ``command``.
+
+The key ``ignore_stdout`` (defaults to ``true``) can be used to ignore
+any output the program writes on stdout. The key ``ignore_stderr`` (defaults
+to ``false``) can be used to ignore any output the program writes on stderr.
+
+If stdout/stderr are not ignored, urlwatch will log any possible output
+in its ``--verbose`` log.
+
+The report written to ``stdin`` of the process is based on the output of
+the ``text`` reporter, configuring the text reporter will adjust the data
+sent to the ``shell`` reporter.
+
+For example, to simply append reports to a file, configure it like this:
+
+.. code:: yaml
+
+    shell:
+      enabled: true
+      command: ['tee', '-a', '/path/to/log.txt']
+      ignore_stdout: true
+
+.. _subprocess.Popen(): https://docs.python.org/3/library/subprocess.html#popen-constructor
+
+
+.. only:: man
+
+    Files
+    -----
+
+    ``$XDG_CONFIG_HOME/urlwatch/urlwatch.yaml``
+
+    See also
+    --------
+
+    :manpage:`urlwatch(1)`,
+    :manpage:`urlwatch-config(5)`,
+    :manpage:`urlwatch-intro(7)`,
+    :manpage:`urlwatch-cookbook(7)`

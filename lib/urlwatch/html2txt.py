@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of urlwatch (https://thp.io/2008/urlwatch/).
-# Copyright (c) 2008-2021 Thomas Perl <m@thp.io>
+# Copyright (c) 2008-2024 Thomas Perl <m@thp.io>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -70,7 +70,7 @@ def html2text(data, baseurl, method, options):
 
     if method == 'pyhtml2text':
         if pyhtml2text is None:
-            raise ImportError('Please install pyhtml2text')
+            raise ImportError("Please install python's html2text")
 
         parser = pyhtml2text.HTML2Text()
         parser.baseurl = baseurl
@@ -90,7 +90,12 @@ def html2text(data, baseurl, method, options):
     if method == 'lynx':
         cmd = ['lynx', '-nonumbers', '-dump', '-stdin', '-assume_charset UTF-8', '-display_charset UTF-8']
     elif method == 'html2text':
-        cmd = ['html2text', '-nobs', '-utf8']
+        if '-utf8' in subprocess.check_output(['html2text', '-help'], encoding='utf-8'):
+            # Version 1.3.2a or older, defaults to Latin-1, needs "-utf8"
+            cmd = ['html2text', '-nobs', '-utf8']
+        else:
+            # Version 2.1.1 or newer, defaults to UTF-8
+            cmd = ['html2text', '-nobs']
     else:
         raise ValueError('Unknown html2text method: %r' % (method,))
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of urlwatch (https://thp.io/2008/urlwatch/).
-# Copyright (c) 2008-2021 Thomas Perl <m@thp.io>
+# Copyright (c) 2008-2024 Thomas Perl <m@thp.io>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -34,13 +34,16 @@ import logging
 import os
 import re
 import subprocess
-import requests
 import textwrap
-import urlwatch
+from typing import Iterable, Optional, Set, FrozenSet, Sequence
+
+import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
-from .util import TrackSubClasses
+import urlwatch
+
 from .filters import FilterBase
+from .util import TrackSubClasses
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -50,12 +53,23 @@ logger = logging.getLogger(__name__)
 class ShellError(Exception):
     """Exception for shell commands with non-zero exit code"""
 
-    def __init__(self, result):
+    def __init__(self, result, stdout_data, stderr_data, stderr_config):
         Exception.__init__(self)
         self.result = result
+        self.stdout_data = stdout_data
+        self.stderr_data = stderr_data
+        self.stderr_config = stderr_config
 
     def __str__(self):
-        return '%s: Exit status %d' % (self.__class__.__name__, self.result)
+        stdout = '\n'.join(('=' * 30, 'stdout from failed process:', repr(self.stdout_data), '=' * 30))
+        stderr = '\n'.join(('=' * 30, 'stderr from failed process:', repr(self.stderr_data), '=' * 30))
+        return '%s: Exit status %d\nstderr behavior: %r\n%s\n%s' % (
+            self.__class__.__name__,
+            self.result,
+            self.stderr_config,
+            stdout,
+            stderr,
+        )
 
 
 class NotModifiedError(Exception):
@@ -100,6 +114,9 @@ class JobBase(object, metaclass=TrackSubClasses):
         return '\n'.join(result)
 
     def get_location(self):
+        raise NotImplementedError()
+
+    def set_base_location(self):
         raise NotImplementedError()
 
     def pretty_name(self):
@@ -180,7 +197,10 @@ class JobBase(object, metaclass=TrackSubClasses):
 
 class Job(JobBase):
     __required__ = ()
-    __optional__ = ('name', 'filter', 'max_tries', 'diff_tool', 'compared_versions', 'diff_filter', 'treat_new_as_changed', 'user_visible_url')
+    __optional__ = ('name', 'filter', 'max_tries', 'diff_tool', 'compared_versions', 'diff_filter', 'enabled', 'treat_new_as_changed', 'user_visible_url', 'tags')
+
+    def matching_tags(self, tags: Set[str]) -> Set[str]:
+        return self.tags & tags
 
     # determine if hyperlink "a" tag is used in HtmlReporter
     def location_is_url(self):
@@ -189,6 +209,22 @@ class Job(JobBase):
     def pretty_name(self):
         return self.name if self.name else self.get_location()
 
+    def is_enabled(self):
+        return self.enabled is None or self.enabled
+
+    @property
+    def tags(self) -> Optional[FrozenSet[str]]:
+        return self._tags
+
+    @tags.setter
+    def tags(self, value: Optional[Iterable[str]]):
+        if value is None:
+            self._tags = None
+        elif isinstance(value, str):
+            self._tags = frozenset([str])
+        else:
+            self._tags = frozenset(value)
+
 
 class ShellJob(Job):
     """Run a shell command and get its standard output"""
@@ -196,17 +232,39 @@ class ShellJob(Job):
     __kind__ = 'shell'
 
     __required__ = ('command',)
-    __optional__ = ()
+    __optional__ = ('stderr',)
 
     def get_location(self):
         return self.user_visible_url or self.command
 
+    def set_base_location(self, location):
+        self.command = location
+
     def retrieve(self, job_state):
-        process = subprocess.Popen(self.command, stdout=subprocess.PIPE, shell=True)
+        if not self.stderr or self.stderr == 'ignore':
+            # Report stderr output for non-zero exit code,
+            # but ignore stderr output with zero exit code
+            stderr = subprocess.PIPE
+        elif self.stderr == 'urlwatch':
+            # Legacy behavior, forward stderr output to urlwatch's stderr
+            stderr = None
+        elif self.stderr == 'fail':
+            # Treat any output on stderr as failure (even with zero exit code)
+            stderr = subprocess.PIPE
+        elif self.stderr == 'stdout':
+            # Combine stderr into stdout (kind of like "2>&1" on the shell)
+            stderr = subprocess.STDOUT
+        else:
+            raise ValueError('Invalid value for "stderr": %s' % (self.stderr,))
+
+        process = subprocess.Popen(self.command, stdout=subprocess.PIPE, stderr=stderr, shell=True)
         stdout_data, stderr_data = process.communicate()
         result = process.wait()
         if result != 0:
-            raise ShellError(result)
+            raise ShellError(result, stdout_data, stderr_data, self.stderr)
+        elif self.stderr == 'fail' and stderr_data:
+            # Exit code zero, but stderr contains data, and we want to fail
+            raise ShellError(result, stdout_data, stderr_data, self.stderr)
 
         if FilterBase.filter_chain_needs_bytes(self.filter):
             return stdout_data
@@ -222,12 +280,15 @@ class UrlJob(Job):
     __required__ = ('url',)
     __optional__ = ('cookies', 'data', 'method', 'ssl_no_verify', 'ignore_cached', 'http_proxy', 'https_proxy',
                     'headers', 'ignore_connection_errors', 'ignore_http_error_codes', 'encoding', 'timeout',
-                    'ignore_timeout_errors', 'ignore_too_many_redirects')
+                    'ignore_timeout_errors', 'ignore_too_many_redirects', 'ignore_incomplete_reads')
 
     CHARSET_RE = re.compile('text/(html|plain); charset=([^;]*)')
 
     def get_location(self):
         return self.user_visible_url or self.url
+
+    def set_base_location(self, location):
+        self.url = location
 
     def retrieve(self, job_state):
         headers = {
@@ -268,7 +329,8 @@ class UrlJob(Job):
         file_scheme = 'file://'
         if self.url.startswith(file_scheme):
             logger.info('Using local filesystem (%s URI scheme)', file_scheme)
-            return open(self.url[len(file_scheme):], 'rt').read()
+            with open(self.url[len(file_scheme):], 'rt') as f:
+                return f.read()
 
         if self.headers:
             self.add_custom_headers(headers)
@@ -346,6 +408,8 @@ class UrlJob(Job):
             return True
         if isinstance(exception, requests.exceptions.TooManyRedirects) and self.ignore_too_many_redirects:
             return True
+        if isinstance(exception, requests.exceptions.ChunkedEncodingError) and self.ignore_incomplete_reads:
+            return True
         elif isinstance(exception, requests.exceptions.HTTPError):
             status_code = exception.response.status_code
             ignored_codes = []
@@ -366,17 +430,29 @@ class BrowserJob(Job):
 
     __required__ = ('navigate',)
 
-    __optional__ = ('wait_until',)
+    __optional__ = ('wait_until', 'wait_for', 'useragent', 'browser')
 
     def get_location(self):
         return self.user_visible_url or self.navigate
 
-    def main_thread_enter(self):
-        from .browser import BrowserContext
-        self.ctx = BrowserContext()
-
-    def main_thread_exit(self):
-        self.ctx.close()
+    def set_base_location(self, location):
+        self.navigate = location
 
     def retrieve(self, job_state):
-        return self.ctx.process(self.navigate, wait_until=self.wait_until)
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = playwright[self.browser or "chromium"].launch()
+            page = browser.new_page(user_agent=self.useragent)
+
+            if self.wait_until in ('networkidle0', 'networkidle2'):
+                logger.warning(f'wait_until has deprecated value of {self.wait_until}, see docs')
+                # Pyppetteer -> Playwright migration
+                self.wait_until = 'networkidle'
+
+            page.goto(self.navigate, wait_until=self.wait_until)
+
+            if self.wait_for:
+                locator = page.locator(self.wait_for)
+                locator.wait_for()
+
+            return page.content()

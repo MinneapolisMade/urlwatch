@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of urlwatch (https://thp.io/2008/urlwatch/).
-# Copyright (c) 2008-2021 Thomas Perl <m@thp.io>
+# Copyright (c) 2008-2024 Thomas Perl <m@thp.io>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -321,8 +321,7 @@ class Html2TextFilter(FilterBase):
     def filter(self, data, subfilter):
         if 'method' in subfilter:
             method = subfilter['method']
-            del subfilter['method']
-            options = subfilter
+            options = {key: val for (key, val) in subfilter.items() if key != 'method'}
         else:
             method = 're'
             options = {}
@@ -337,13 +336,9 @@ class Csv2TextFilter(FilterBase):
     __kind__ = 'csv2text'
 
     __supported_subfilters__ = {
-        'format_message': 'A format string with the headers that will be outputted for each csv '
-                          'line (header will be lower-cased)',
-        'ignore_header': 'If your format string is number based, but the CSV has headers, '
-                         'this flag will force ignoring the header.',
-        'has_header': 'If specified and true - use the first line as a header. '
-                      'If false - force ignore first line as header (treat it as data). '
-                      'If not specified csv.Sniffer will be used.',
+        'format_message': 'A string used to format for each CSV line',
+        'ignore_header': 'Force index-based format string, even if headers are used',
+        'has_header': 'Override auto-detection of the first line as header',
     }
 
     __default_subfilter__ = 'format_message'
@@ -494,6 +489,17 @@ class StripFilter(FilterBase):
 
     def filter(self, data, subfilter):
         return data.strip()
+
+
+class StripLinesFilter(FilterBase):
+    """Strip leading and trailing whitespace in every line"""
+
+    __kind__ = 'striplines'
+
+    __no_subfilter__ = True
+
+    def filter(self, data, subfilter=None):
+        return '\n'.join(line.strip() for line in data.splitlines())
 
 
 class FilterBy(Enum):
@@ -668,6 +674,7 @@ class LxmlParser:
         self.namespaces = subfilter.get('namespaces')
         self.skip = int(subfilter.get('skip', 0))
         self.maxitems = int(subfilter.get('maxitems', 0))
+        self.sort_items = bool(subfilter.get('sort', False))
         if self.method not in ('html', 'xml'):
             raise ValueError('%s method must be "html" or "xml", got %r' % (filter_kind, self.method))
         if self.method == 'html' and self.namespaces is not None:
@@ -754,9 +761,9 @@ class LxmlParser:
         excluded_elems = None
         if self.filter_kind == 'css':
             selected_elems = CSSSelector(self.expression,
-                                         namespaces=self.namespaces).evaluate(root)
+                                         namespaces=self.namespaces)(root)
             excluded_elems = CSSSelector(self.exclude,
-                                         namespaces=self.namespaces).evaluate(root) if self.exclude else None
+                                         namespaces=self.namespaces)(root) if self.exclude else None
         elif self.filter_kind == 'xpath':
             selected_elems = root.xpath(self.expression, namespaces=self.namespaces)
             excluded_elems = root.xpath(self.exclude, namespaces=self.namespaces) if self.exclude else None
@@ -771,7 +778,8 @@ class LxmlParser:
             elements = elements[self.skip:]
         if self.maxitems:
             elements = elements[:self.maxitems]
-        return '\n'.join(self._to_string(element) for element in elements)
+        elements = (self._to_string(element) for element in elements)
+        return '\n'.join(sorted(elements) if self.sort_items else elements)
 
 
 LXML_PARSER_COMMON_SUBFILTERS = {
@@ -780,6 +788,7 @@ LXML_PARSER_COMMON_SUBFILTERS = {
     'namespaces': 'Mapping of XML namespaces for matching',
     'skip': 'Number of elements to skip from the beginning (default: 0)',
     'maxitems': 'Maximum number of items to return (default: all)',
+    'sort': 'Sort matched items after filtering (default: False)',
 }
 
 
@@ -837,6 +846,26 @@ class RegexSub(FilterBase):
 
         # Default: Replace with empty string if no "repl" value is set
         return re.sub(subfilter['pattern'], subfilter.get('repl', ''), data)
+
+
+class RegexFindall(FilterBase):
+    """Pick out regular expressions using Python's re.findall"""
+
+    __kind__ = 're.findall'
+
+    __supported_subfilters__ = {
+        'pattern': 'Regular expression to search for (required)',
+        'repl': 'Replacement string (default: full match)',
+    }
+
+    __default_subfilter__ = 'pattern'
+
+    def filter(self, data, subfilter):
+        if 'pattern' not in subfilter:
+            raise ValueError('{} needs a pattern'.format(self.__kind__))
+
+        # Default: Replace with full match if no "repl" value is set
+        return "\n".join(match.expand(subfilter.get('repl', '\\g<0>')) for match in re.finditer(subfilter['pattern'], data))
 
 
 class SortFilter(FilterBase):
